@@ -167,10 +167,11 @@ async def listen() -> None:
             await tg.send(chat_id, "✅ Вход выполнен! Теперь доступны все команды.", reply_markup=commands.MAIN_KEYBOARD)
 
     async def send_settings(chat_id: str) -> None:
-        acc = store.get_account(chat_id)
-        if acc is None:
-            await tg.send(chat_id, "Настройки доступны только владельцу аккаунта. /login — войти.")
+        owner_id = store.resolve_owner(chat_id)
+        if owner_id is None:
+            await tg.send(chat_id, "Сначала войдите: /login, или привяжитесь через /link КОД.")
             return
+        acc = store.get_account(owner_id)
         text = (
             "<b>Настройки</b>\n"
             f"Порог низкого баланса: {checks.rub(acc['low_balance_kopecks'])}\n"
@@ -180,15 +181,16 @@ async def listen() -> None:
         await tg.send(chat_id, text, reply_markup=commands.settings_keyboard(acc))
 
     async def handle_set(chat_id: str, args: list[str]) -> None:
-        if store.get_account(chat_id) is None or len(args) < 2:
+        owner_id = store.resolve_owner(chat_id)
+        if owner_id is None or len(args) < 2:
             return
         field, value = args[0], args[1]
         if field == "poll":
-            store.update_account(chat_id, poll_seconds=int(value))
+            store.update_account(owner_id, poll_seconds=int(value))
         elif field == "threshold":
-            store.update_account(chat_id, low_balance_kopecks=int(value), balance_low=0)
+            store.update_account(owner_id, low_balance_kopecks=int(value), balance_low=0)
         elif field == "notify":
-            store.update_account(chat_id, notify=int(value))
+            store.update_account(owner_id, notify=int(value))
         else:
             return
         await send_settings(chat_id)
@@ -210,10 +212,11 @@ async def listen() -> None:
             await handle_set(chat_id, args)
             return
         if cmd == "share":
-            if store.get_account(chat_id) is None:
+            owner_id = store.resolve_owner(chat_id)
+            if owner_id is None:
                 await tg.send(chat_id, "Сначала войдите в свой аккаунт: /login")
                 return
-            code = store.create_share_code(chat_id)
+            code = store.create_share_code(owner_id)
             await tg.send(
                 chat_id,
                 f"Код для привязки: <code>{code}</code>\nДействует 15 минут. "
@@ -239,10 +242,11 @@ async def listen() -> None:
             await tg.send(chat_id, "Отвязано.", reply_markup=commands.MAIN_KEYBOARD)
             return
         if cmd == "viewers":
-            if store.get_account(chat_id) is None:
+            owner_id = store.resolve_owner(chat_id)
+            if owner_id is None:
                 await tg.send(chat_id, "Сначала войдите: /login")
                 return
-            viewers = store.list_viewers(chat_id)
+            viewers = [v for v in store.list_viewers(owner_id) if v != chat_id]
             text = "Подключены: " + ", ".join(viewers) if viewers else "Пока никто не подключён. /share — дать доступ."
             await tg.send(chat_id, text)
             return

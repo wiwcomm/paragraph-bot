@@ -77,11 +77,11 @@ def build(webhook_secret: str | None = None):
             await send(user_id, "✅ Вход выполнен! Теперь доступны все команды.", commands.MAIN_KEYBOARD["inline_keyboard"])
 
     async def send_settings(user_id: int) -> None:
-        owner_id = oid(user_id)
-        acc = store.get_account(owner_id)
-        if acc is None:
-            await send(user_id, "Настройки доступны только владельцу аккаунта. /login — войти.")
+        owner_id = store.resolve_owner(oid(user_id))
+        if owner_id is None:
+            await send(user_id, "Сначала войдите: /login, или привяжитесь через /link КОД.")
             return
+        acc = store.get_account(owner_id)
         text = (
             "<b>Настройки</b>\n"
             f"Порог низкого баланса: {checks.rub(acc['low_balance_kopecks'])}\n"
@@ -91,8 +91,8 @@ def build(webhook_secret: str | None = None):
         await send(user_id, text, commands.settings_keyboard(acc)["inline_keyboard"])
 
     async def handle_set(user_id: int, args: list[str]) -> None:
-        owner_id = oid(user_id)
-        if store.get_account(owner_id) is None or len(args) < 2:
+        owner_id = store.resolve_owner(oid(user_id))
+        if owner_id is None or len(args) < 2:
             return
         field, value = args[0], args[1]
         if field == "poll":
@@ -123,10 +123,11 @@ def build(webhook_secret: str | None = None):
             await handle_set(user_id, args)
             return
         if cmd == "share":
-            if store.get_account(owner_id) is None:
+            share_owner = store.resolve_owner(owner_id)
+            if share_owner is None:
                 await send(user_id, "Сначала войдите в свой аккаунт: /login")
                 return
-            code = store.create_share_code(owner_id)
+            code = store.create_share_code(share_owner)
             await send(
                 user_id,
                 f"Код для привязки: <code>{code}</code>\nДействует 15 минут. "
@@ -152,10 +153,11 @@ def build(webhook_secret: str | None = None):
             await send(user_id, "Отвязано.", commands.MAIN_KEYBOARD["inline_keyboard"])
             return
         if cmd == "viewers":
-            if store.get_account(owner_id) is None:
+            viewers_owner = store.resolve_owner(owner_id)
+            if viewers_owner is None:
                 await send(user_id, "Сначала войдите: /login")
                 return
-            viewers = store.list_viewers(owner_id)
+            viewers = [v for v in store.list_viewers(viewers_owner) if v != owner_id]
             text = "Подключены: " + ", ".join(viewers) if viewers else "Пока никто не подключён. /share — дать доступ."
             await send(user_id, text)
             return
